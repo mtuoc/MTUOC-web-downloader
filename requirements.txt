@@ -1,0 +1,12 @@
+beautifulsoup4
+dewiki
+fasttext
+html2text
+langcodes
+lxml
+regex
+Requests
+selenium
+textract
+urllib3
+ultimate_sitemap_parser
