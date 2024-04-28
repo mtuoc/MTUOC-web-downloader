@@ -55,6 +55,8 @@ parser = argparse.ArgumentParser(description='MTUOC program to get the links fro
 parser.add_argument('-f','--file', action="store", dest="sitemapfile", help='The file containing the links to download (the sitemap).',required=True)
 parser.add_argument('-d','--directory', action="store", dest="outdir", help='The directory where the downladed files will be stored. If not provided, "download" subdirectory will be used.',required=False, default="download")
 parser.add_argument('-s','--strategy', action="store", dest="strategy", help='selenium (default) / requests.',required=False, default="selenium")
+parser.add_argument('-l','--log', action="store", dest="logfile", help='The log file to write and load.',required=False)
+parser.add_argument('-e','--exclude', nargs='+', help='List of file extensions to ignore')
 parser.add_argument('--nofollow', action="store_true", dest="nofollow", help='Do not follow new links.',required=False, default=False)
 parser.add_argument('--minwait', action="store", dest="minwait", help='The minimum time to wait between downloads. Default 0.',required=False, default=0)
 parser.add_argument('--maxwait', action="store", dest="maxwait", help='The maximum time to wait between downloads. Defautt 2 seconds.',required=False, default=2)
@@ -62,6 +64,12 @@ parser.add_argument('--maxdownload', action="store", dest="maxdowload", help='Th
 parser.add_argument('--timeout', action="store", dest="timeout", help='The timeout for Selenium. Defautt 10',required=False, default=10)
 
 args = parser.parse_args()
+
+exclude=args.exclude
+if exclude==None:
+    exclude=[]
+
+
 
 sitemapfile=args.sitemapfile
 nofollow=args.nofollow
@@ -91,8 +99,26 @@ if strategy=="selenium":
     browser.set_page_load_timeout(timeout)  
 
 entrada=codecs.open(sitemapfile,"r",encoding="utf-8")
-logfilename="downloadlog-"+sitemapfile.replace("sitemap-","")
-sortidalog=codecs.open(logfilename,"w",encoding="utf-8")
+if args.logfile==None:
+    logfilename="downloadlog-"+sitemapfile.replace("sitemap-","")
+else:
+    logfilename=args.logfile
+
+linkssuccess=[]
+linkserrors=[]    
+
+if os.path.exists(logfilename):
+    entradalog=codecs.open(logfilename,"r",encoding="utf-8")
+    for linia in entradalog:
+        linia=linia.rstrip()
+        camps=linia.split("\t")
+        if camps[0]=="SUCCESS":
+            linkssuccess.append(camps[1])
+        elif camps[1]=="ERROR":
+            linkserrors.append(camps[1])
+    entradalog.close()
+
+sortidalog=codecs.open(logfilename,"a",encoding="utf-8")
 
 links=[]
 done=[]
@@ -102,6 +128,10 @@ for linia in entrada:
     linia=linia.rstrip()
     if not linia in links and not linia.startswith("#"):
         links.append(linia)
+
+links.extend(linkserrors)
+links = [x for x in links if x not in linkssuccess]
+
 
 contreplace=0
 moreelements=len(links)
@@ -122,22 +152,25 @@ while moreelements>0:
             os.makedirs(dir1)
         fullfilename=os.path.join(dir1,filename)
         file_extension = pathlib.Path(fullfilename).suffix
-        if file_extension in fileextensions:
-            cadenalog.append("DOWNLOADING")
-            cadenalog.append(str(link))
-            cadenalog.append(fullfilename)
+        if file_extension in fileextensions and not file_extension in exclude:
+            #cadenalog.append("DOWNLOADING")
+            #cadenalog.append(str(link))
+            #cadenalog.append(fullfilename)
             print("DOWNLOADING: ",link," to ", fullfilename)
             response = requests.get(link, verify=False)
             document = open(fullfilename, 'wb')
             document.write(response.content)
             document.close()
             cadenalog.append("SUCCESS")
+            cadenalog.append(str(link))
+            cadenalog.append(fullfilename)
+            cadenalog.append(strategy)
             totaldownloaded+=1
             sleep(randint(minwait,maxwait))
         else:
             print("GETTING: ",link)
-            cadenalog.append("GETTING")
-            cadenalog.append(link)
+            #cadenalog.append("GETTING")
+            #cadenalog.append(link)
             if strategy=="selenium":
                 browser.get(link)
                 delay = 3
@@ -168,11 +201,13 @@ while moreelements>0:
                 fullfilename=os.path.join(dir1,filename)
                 contreplace+=1
                 
-            cadenalog.append(fullfilename)
+            #cadenalog.append(fullfilename)
             sortida=codecs.open(fullfilename,"w",encoding="utf-8")
             sortida.write(html+"\n")
             sortida.close()
             cadenalog.append("SUCCESS")
+            cadenalog.append(str(link))
+            cadenalog.append(fullfilename)
             cadenalog.append(strategy)
             totaldownloaded+=1
             sleep(randint(minwait,maxwait))
@@ -181,6 +216,9 @@ while moreelements>0:
     except:
         print("ERROR:",sys.exc_info())
         cadenalog.append("ERROR")
+        cadenalog.append(str(link))
+        cadenalog.append(fullfilename)
+        cadenalog.append(strategy)
         cadenalog.append(str(sys.exc_info()[0]))
     moreelements=len(links)
     cadenalog="\t".join(cadenalog)
