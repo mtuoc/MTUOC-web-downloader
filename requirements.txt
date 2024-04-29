@@ -1,5 +1,4 @@
 beautifulsoup4
-dewiki
 fasttext
 html2text
 langcodes
