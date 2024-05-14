@@ -1,5 +1,5 @@
 #    MTUOC-downloadedweb2text
-#    Copyright (C) 2023  Antoni Oliver
+#    Copyright (C) 2024  Antoni Oliver
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -20,7 +20,6 @@ import os
 from bs4 import BeautifulSoup
 import codecs
 import sys
-import dewiki
 import re
 import fasttext
 import html2text
@@ -173,6 +172,21 @@ def segmenta(cadena,srxlang):
             resposta.append(segment)
     #resposta="\n".join(resposta)
     return(resposta)
+    
+def remove_wiki_markup(text):
+    # Remove text within square brackets
+    text = re.sub(r'\[.*?\]', '', text)
+    
+    # Remove text within curly braces
+    text = re.sub(r'\{.*?\}', '', text)
+    
+    # Remove text within angle brackets
+    text = re.sub(r'<.*?>', '', text)
+    
+    # Remove any remaining wiki markup tags
+    text = re.sub(r'(\'{2,5}|\[{2}(.*?)\]{2})', '', text)
+    
+    return text
 
 
 parser = argparse.ArgumentParser(description='MTUOC program to convert a downloaded web into text.')
@@ -180,7 +194,7 @@ parser.add_argument('-d','--directory', action="store", dest="direntrada", help=
 parser.add_argument('-p','--preffix', action="store", dest="preffix", help='The preffix for the text files. ',required=False)
 parser.add_argument('--ldm', action="store", dest="langdetmodel", help='The fastText language detection model. By default lid.176.bin.',required=False)
 parser.add_argument('-s','--srx', action="store", dest="srxfile", help='The SRX file containing the segmentation rules. By default segment.srx. ',required=False)
-
+parser.add_argument('--pdf', action="store_true", dest="includepdf", help='To convert downloaded pdf files. By default pdfs are not converted into text. ',required=False, default=False)
 
 
 args = parser.parse_args()
@@ -200,6 +214,10 @@ if args.srxfile==None:
 else:
     srxfile=args.srxfile
 
+includepdf=args.includepdf
+
+print(includepdf)
+
 
 modelFT = fasttext.load_model(langdetmodel)
 
@@ -215,7 +233,7 @@ for path, currentDirectory, files in os.walk(direntrada):
     for file in files:
         fullpath=os.path.join(path, file)
         try:
-            if file.endswith(".pdf") or file.endswith(".PDF"):
+            if file.endswith(".pdf") or file.endswith(".PDF") and includepdf:
                 print("Converting PDF file:",file)
                 text = textract.process(fullpath,encoding='utf-8',extension=".pdf",method='pdftotext').decode("utf-8", "replace")
                 text=arregla(text)
@@ -253,7 +271,7 @@ for path, currentDirectory, files in os.walk(direntrada):
             for segment in segments:
                 if len(segment)>0:
                     segment2=segment.strip()
-                    segment2=dewiki.from_string(segment2)
+                    segment2=remove_wiki_markup(segment2)
                     segment2=remove_tags(segment2)
                     outfile.write(segment2+"\n")
             outfile.close()
