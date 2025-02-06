@@ -43,8 +43,7 @@ from tkinter import ttk
 
 import tkinter 
 
-import importlib  
-download = importlib.import_module("MTUOC-download-from-sitemap")
+
 
 def base_url(url, with_path=False):
     parsed = urlparse(url)
@@ -71,8 +70,161 @@ def go():
     strategy=CB4.get()
     timeout=int(E9.get().strip())
     
+    '''
+    sitemapfile=args.sitemapfile
+    nofollow=args.nofollow
+    minwait=args.minwait
+    maxwait=args.maxwait
+    maxdowload=int(args.maxdowload)
+    outdir=args.outdir
+    strategy=args.strategy
+    timeout=args.timeout
+    '''
+    if not strategy=="selenium" and not strategy=="requests":
+        print("ERROR: Strategy should be: selenium or requests")
+        sys.exit()
+
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
+        
+    if strategy=="selenium":
+        from selenium import webdriver
+        from selenium.webdriver import Firefox
+        from selenium.webdriver.firefox.options import Options
+        from selenium.webdriver.support.ui import WebDriverWait
+        opts = Options()
+        opts.add_argument('-headless')
+        opts.accept_untrusted_certs = True
+        browser = webdriver.Firefox(options=opts)
+        browser.set_page_load_timeout(timeout)  
+
+    entrada=codecs.open(sitemapfile,"r",encoding="utf-8")
+    logfilename="downloadlog.txt"
     
-    download.download_from_sitemap(sitemapfile, nofollow, minwait, maxwait, maxdowload, outdir, strategy, timeout)
+    linkssuccess=[]
+    linkserrors=[]    
+
+    if os.path.exists(logfilename):
+        entradalog=codecs.open(logfilename,"r",encoding="utf-8")
+        for linia in entradalog:
+            linia=linia.rstrip()
+            camps=linia.split("\t")
+            if camps[0]=="SUCCESS":
+                linkssuccess.append(camps[1])
+            elif camps[1]=="ERROR":
+                linkserrors.append(camps[1])
+        entradalog.close()
+
+    sortidalog=codecs.open(logfilename,"a",encoding="utf-8")
+
+    links=[]
+    done=[]
+
+
+    for linia in entrada:
+        linia=linia.rstrip()
+        if not linia in links and not linia.startswith("#"):
+            links.append(linia)
+
+    links.extend(linkserrors)
+    links = [x for x in links if x not in linkssuccess]
+
+
+    contreplace=0
+    moreelements=len(links)
+    totaldownloaded=0
+    while moreelements>0:
+        cadenalog=[]
+        try:
+            
+            link=links.pop(0)
+            done.append(link)
+            baseurl=base_url(link)
+            domain = urlparse(link).netloc
+            camps=os.path.split(link)
+            filename=camps[-1]
+            dirs=camps[0].replace(baseurl,"").split("/")[1:]
+            dir1=os.path.join(outdir,domain,"/".join(dirs))
+            if not os.path.exists(dir1):
+                os.makedirs(dir1)
+            fullfilename=os.path.join(dir1,filename)
+            file_extension = pathlib.Path(fullfilename).suffix
+            if file_extension in fileextensions and not file_extension in exclude:
+                #cadenalog.append("DOWNLOADING")
+                #cadenalog.append(str(link))
+                #cadenalog.append(fullfilename)
+                print("DOWNLOADING: ",link," to ", fullfilename)
+                response = requests.get(link, verify=False)
+                document = open(fullfilename, 'wb')
+                document.write(response.content)
+                document.close()
+                cadenalog.append("SUCCESS")
+                cadenalog.append(str(link))
+                cadenalog.append(fullfilename)
+                cadenalog.append(strategy)
+                totaldownloaded+=1
+                sleep(randint(minwait,maxwait))
+            else:
+                print("GETTING: ",link)
+                #cadenalog.append("GETTING")
+                #cadenalog.append(link)
+                if strategy=="selenium":
+                    browser.get(link)
+                    delay = 3
+                    html = browser.page_source
+                elif strategy=="requests":
+                    response = requests.get(link, verify=False)
+                    page_source = response.content.decode("utf-8")
+                    html=page_source
+                #text=h.handle(html)
+                soup = BeautifulSoup(html, "lxml")
+                newlinks=soup.findAll('a')
+                if not nofollow:
+                    for l in newlinks:
+                        l2=l.get('href')
+                        if not l2==None and l2.startswith("/"):
+                            l2=urljoin(baseurl,l2)
+                        if not l2==None and l2.startswith(baseurl):
+                            if not l2 in links and not l2 in done:
+                                print("NEWLINK:",l2)
+                                links.append(l2)
+                file_extension = pathlib.Path(fullfilename).suffix
+                
+                if not file_extension in htmlextensions:
+                    fullfilename=fullfilename+".html"
+                fullfilename=fullfilename.replace("?","_").replace("<","_")
+                if len(fullfilename)>256:
+                    filename="replaced_filename_"+str(contreplace)+".html"
+                    fullfilename=os.path.join(dir1,filename)
+                    contreplace+=1
+                    
+                #cadenalog.append(fullfilename)
+                sortida=codecs.open(fullfilename,"w",encoding="utf-8")
+                sortida.write(html+"\n")
+                sortida.close()
+                cadenalog.append("SUCCESS")
+                cadenalog.append(str(link))
+                cadenalog.append(fullfilename)
+                cadenalog.append(strategy)
+                totaldownloaded+=1
+                sleep(randint(minwait,maxwait))
+            print("DONE: ",str(len(done)),"TO DOWNLOAD:",str(moreelements))
+        
+        except:
+            print("ERROR:",sys.exc_info())
+            cadenalog.append("ERROR")
+            cadenalog.append(str(link))
+            cadenalog.append(fullfilename)
+            cadenalog.append(strategy)
+            cadenalog.append(str(sys.exc_info()[0]))
+        moreelements=len(links)
+        cadenalog="\t".join(cadenalog)
+        sortidalog.write(cadenalog+"\n")
+        sortidalog.close()
+        sortidalog=codecs.open(logfilename,"a",encoding="utf-8")
+        if totaldownloaded>=maxdowload:
+            sys.exit()
+    sortidalog.close()    
     
      
 
