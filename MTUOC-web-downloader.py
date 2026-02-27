@@ -24,13 +24,11 @@ EXT_MAP = {
 # --- PERSISTENCE HELPERS ---
 
 def save_list_to_file(filename, data_set):
-    """Saves a set of URLs to a text file."""
     with open(filename, "w", encoding="utf-8") as f:
         for item in sorted(list(data_set)):
             f.write(f"{item}\n")
 
 def load_list_from_file(filename):
-    """Loads URLs from a text file into a set."""
     if os.path.exists(filename):
         with open(filename, "r", encoding="utf-8") as f:
             return set(line.strip() for line in f if line.strip())
@@ -64,7 +62,6 @@ def discover_wayback_links(domain):
     return set()
 
 async def get_wayback_snapshot_url(url, date=None):
-    """Queries the Wayback Availability API for the closest snapshot."""
     api_url = f"http://archive.org/wayback/available?url={urllib.parse.quote(url)}"
     if date: api_url += f"&timestamp={date}"
     try:
@@ -77,17 +74,17 @@ async def get_wayback_snapshot_url(url, date=None):
     except: pass
     return None
 
-def url_to_local_path(url, base_folder):
-    """Converts a URL to a structured local file path."""
+def url_to_local_path(url, base_folder, subfolder="html"):
+    """Converts URL to a path, separating by html, text, or binary type."""
     parsed = urlparse(url)
     path = parsed.path
     if not path or path == "/": path = "/index.html"
     elif not os.path.splitext(path)[1]: path = path.rstrip("/") + "/index.html"
+    
     domain_folder = parsed.netloc.replace(".", "_")
-    return os.path.normpath(os.path.join(base_folder, domain_folder, path.lstrip("/")))
+    return os.path.normpath(os.path.join(base_folder, subfolder, domain_folder, path.lstrip("/")))
 
 async def download_binary(url, local_path):
-    """Downloads non-HTML files directly using requests."""
     try:
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
         r = requests.get(url, stream=True, timeout=20, verify=False)
@@ -101,50 +98,45 @@ async def download_binary(url, local_path):
 # --- MAIN CRAWLER ---
 
 async def main_crawler():
-    parser = argparse.ArgumentParser(description="MTUOC Final Archeologist Crawler")
+    parser = argparse.ArgumentParser(description="MTUOC Mirroring Crawler (HTML + Optional Text)")
     parser.add_argument("url", type=str, nargs="?", help="The starting URL to crawl.")
     parser.add_argument("-o", "--output_dir", default="mirror_site", help="Local directory to save the mirror.")
     parser.add_argument("-l", "--output_list", default="links.txt", help="File to save the list of all found URLs.")
-    parser.add_argument("-t", "--timeout", type=int, default=60, help="Timeout in seconds for page loading.")
     parser.add_argument("--web", action="store_true", help="Enable HTML downloading.")
+    parser.add_argument("--text", action="store_true", help="Save a clean text/markdown version in a parallel directory.")
     parser.add_argument("--pdf", action="store_true", help="Enable PDF downloading.")
     parser.add_argument("--docs", action="store_true", help="Enable documents downloading.")
     parser.add_argument("--media", action="store_true", help="Enable media downloading.")
-    parser.add_argument("--robots", action="store_true", help="Respect robots.txt rules during the crawl.")
-    parser.add_argument("--visible", action="store_true", help="Run the browser in visible mode.")
-    parser.add_argument("--delay", type=float, default=1.0, help="Base delay between requests (randomized).")
+    parser.add_argument("--robots", action="store_true", help="Respect robots.txt rules.")
+    parser.add_argument("--wayback", action="store_true", help="Enable Wayback Machine discovery/fallback.")
     parser.add_argument("--sitemap", action="store_true", help="Discover URLs via sitemaps.")
-    parser.add_argument("--wayback", action="store_true", help="Discover and recover URLs from Wayback Machine.")
     parser.add_argument("--date", type=str, help="Wayback snapshot date (YYYYMMDD).")
+    parser.add_argument("--delay", type=float, default=1.0, help="Base delay between requests.")
+    parser.add_argument("--visible", action="store_true", help="Run browser in visible mode.")
     
     args = parser.parse_args()
     if not args.url:
         parser.print_help()
         return
 
-    if not (args.web or args.pdf or args.docs or args.media): args.web = True
+    if not (args.web or args.text or args.pdf or args.docs or args.media): args.web = True
 
     start_domain = urlparse(args.url).netloc
     TMP_TO_DOWNLOAD = "toDownload.tmp"
     TMP_ALREADY_DOWNLOADED = "alreadyDownloaded.tmp"
     TMP_ERRORS = "errors.tmp"
 
-    # Load persistent state
     visited = load_list_from_file(TMP_ALREADY_DOWNLOADED)
     errors = load_list_from_file(TMP_ERRORS)
     to_visit_set = load_list_from_file(TMP_TO_DOWNLOAD)
 
     if not to_visit_set:
-        print("--- 🔍 Discovery Mode: Initializing queue... ---")
         initial_url = args.url if args.url.startswith("http") else "https://" + args.url
         to_visit_set.add(initial_url)
         if args.sitemap: to_visit_set.update(discover_sitemaps_with_usp(args.url))
         if args.wayback: to_visit_set.update(discover_wayback_links(start_domain))
-    else:
-        print(f"--- ♻️  Resume Mode: {len(to_visit_set)} URLs pending ---")
 
     to_visit = [u for u in to_visit_set if u not in visited and u not in errors]
-    
     browser_config = BrowserConfig(headless=not args.visible, ignore_https_errors=True)
     
     async with AsyncWebCrawler(config=browser_config) as crawler:
@@ -154,65 +146,70 @@ async def main_crawler():
                 if current_url in visited or current_url in errors: continue
 
                 print(f"[{len(visited)} ✅ | {len(to_visit)} ⏳] -> {current_url}")
-                local_path = url_to_local_path(current_url, args.output_dir)
                 
                 url_lower = current_url.lower()
-                is_binary = any(url_lower.endswith(ext) for cat in EXT_MAP.values() for ext in cat)
-                is_web = not is_binary
+                is_pdf = url_lower.endswith('.pdf')
+                is_doc = any(url_lower.endswith(e) for e in EXT_MAP['docs'])
+                is_media = any(url_lower.endswith(e) for e in EXT_MAP['media'])
+                is_web = not (is_pdf or is_doc or is_media)
 
-                if not ((args.web and is_web) or (args.pdf and url_lower.endswith('.pdf')) or 
-                        (args.docs and any(url_lower.endswith(e) for e in EXT_MAP['docs'])) or 
-                        (args.media and any(url_lower.endswith(e) for e in EXT_MAP['media']))):
+                if not ((args.web and is_web) or (args.text and is_web) or (args.pdf and is_pdf) or (args.docs and is_doc) or (args.media and is_media)):
                     visited.add(current_url)
                     continue
 
                 success = False
-                
-                # Setup crawler config with ROBOTS option
-                run_config = CrawlerRunConfig(
-                    check_robots_txt=args.robots,  # <--- OPCIÓ ROBOTS INTEGRADA
-                    cache_mode=CacheMode.BYPASS, 
-                    wait_until="domcontentloaded", 
-                    page_timeout=args.timeout*1000
-                )
+                run_config = CrawlerRunConfig(check_robots_txt=args.robots, cache_mode=CacheMode.BYPASS, wait_until="domcontentloaded")
 
-                # 1. ATTEMPT LIVE DOWNLOAD
+                # 1. ATTEMPT LIVE
                 try:
                     if is_web:
                         result = await crawler.arun(url=current_url, config=run_config)
                         if result.success:
-                            os.makedirs(os.path.dirname(local_path), exist_ok=True)
-                            with open(local_path, "w", encoding="utf-8") as f: f.write(result.html)
+                            # Save HTML
+                            h_path = url_to_local_path(current_url, args.output_dir, "html")
+                            os.makedirs(os.path.dirname(h_path), exist_ok=True)
+                            with open(h_path, "w", encoding="utf-8") as f: f.write(result.html)
+                            # Save Text if requested
+                            if args.text:
+                                t_path = os.path.splitext(url_to_local_path(current_url, args.output_dir, "text"))[0] + ".txt"
+                                os.makedirs(os.path.dirname(t_path), exist_ok=True)
+                                with open(t_path, "w", encoding="utf-8") as f: f.write(result.markdown or result.extracted_content or "")
+                            
                             success = True
                             for l in result.links.get("internal", []) + result.links.get("external", []):
                                 full_url = urljoin(current_url, l.get('href', '')).split('#')[0].rstrip('/')
-                                if start_domain in urlparse(full_url).netloc and full_url not in visited and full_url not in errors and full_url not in to_visit:
-                                    to_visit.append(full_url)
+                                if start_domain in urlparse(full_url).netloc and full_url not in visited and full_url not in errors:
+                                    if full_url not in to_visit: to_visit.append(full_url)
                     else:
-                        success = await download_binary(current_url, local_path)
+                        sub = "pdf" if is_pdf else "docs" if is_doc else "media"
+                        success = await download_binary(current_url, url_to_local_path(current_url, args.output_dir, sub))
                 except: success = False
 
                 # 2. ATTEMPT WAYBACK FALLBACK
-                if not success:
+                if not success and args.wayback:
                     wb_snapshot = await get_wayback_snapshot_url(current_url, args.date)
                     if wb_snapshot:
                         try:
                             if is_web:
-                                # Per al Wayback normalment no mirem robots.txt ja que és un arxiu històric
-                                wb_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS, page_timeout=args.timeout*1000)
+                                # Skip robots check for Wayback as it's an archive
+                                wb_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS)
                                 result = await crawler.arun(url=wb_snapshot, config=wb_config)
                                 if result.success:
-                                    os.makedirs(os.path.dirname(local_path), exist_ok=True)
-                                    with open(local_path, "w", encoding="utf-8") as f: f.write(result.html)
+                                    h_path = url_to_local_path(current_url, args.output_dir, "html")
+                                    os.makedirs(os.path.dirname(h_path), exist_ok=True)
+                                    with open(h_path, "w", encoding="utf-8") as f: f.write(result.html)
+                                    if args.text:
+                                        t_path = os.path.splitext(url_to_local_path(current_url, args.output_dir, "text"))[0] + ".txt"
+                                        os.makedirs(os.path.dirname(t_path), exist_ok=True)
+                                        with open(t_path, "w", encoding="utf-8") as f: f.write(result.markdown or "")
                                     success = True
                             else:
-                                success = await download_binary(wb_snapshot, local_path)
+                                sub = "pdf" if is_pdf else "docs" if is_doc else "media"
+                                success = await download_binary(wb_snapshot, url_to_local_path(current_url, args.output_dir, sub))
                         except: pass
 
-                if success:
-                    visited.add(current_url)
-                else:
-                    errors.add(current_url)
+                if success: visited.add(current_url)
+                else: errors.add(current_url)
 
                 if len(visited) % 10 == 0:
                     save_list_to_file(TMP_ALREADY_DOWNLOADED, visited)
@@ -221,8 +218,7 @@ async def main_crawler():
 
                 await asyncio.sleep(args.delay * random.uniform(0.5, 1.5))
 
-        except KeyboardInterrupt:
-            print("\n🛑 Stopped. Progress saved.")
+        except KeyboardInterrupt: print("\n🛑 Paused.")
         finally:
             save_list_to_file(TMP_ALREADY_DOWNLOADED, visited)
             save_list_to_file(TMP_TO_DOWNLOAD, set(to_visit))
