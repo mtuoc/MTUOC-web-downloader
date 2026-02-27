@@ -1,0 +1,7 @@
+env/
+venv/
+.env
+__pycache__/
+*.tmp
+mirror_site/
+links.txt
