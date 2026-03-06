@@ -1,78 +1,70 @@
-# 🌐 MTUOC Mirroring Crawler
+A set of Python tools for website mirroring, historical data retrieval, and structural restoration. It utilizes the crawl4ai framework for high-fidelity asynchronous crawling and interacts with the Wayback Machine CDX API for archaeological web recovery.
+Installation and Requirements
 
-A robust website mirroring tool designed to create local copies of websites while ensuring maximum coverage by using the **Wayback Machine** as a fallback.
+The suite requires Python 3.10 or higher.
+ 
+**Install Dependencies:**
 
-## ✨ Key Features
+Install the required libraries using the provided requirements file:
 
-* **Live-First Logic**: Downloads the current version of the site directly from the web.
-* **Wayback Fallback**: If a page is missing (404) or the server fails, it automatically retrieves the latest available version from the Internet Archive.
-* **Recursive Crawling**: Discovers new internal links as it downloads, expanding the queue dynamically.
-* **Checkpoint System**: Automatically saves progress to `.tmp` files. You can stop and resume the crawl at any time without losing data or redownloading files.
-* **Smart Delays**: Uses randomized wait times (±50% of the base delay) to avoid being blocked by servers.
-* **Selective Mirroring**: Choose exactly what to save: HTML, PDFs, Documents, or Media.
+`pip install -r requirements.txt`
 
----
+**Setup Browser Engine:**
 
-## Installation Guide
+Since crawl4ai relies on Playwright for rendering, you must install the Chromium binaries:
 
-### 1. Install Dependencies
+`playwright install chromium`
 
-`pip install crawl4ai requests urllib3 ultrasitemap`
+## 1. MTUOC Web Downloader
 
-### 2. Setup Crawl4AI (Browser Engines)
+The MTUOC Web Downloader is a recursive crawler designed for the comprehensive mirroring of active websites. It features advanced persistence and supports multiple file formats.
 
-The crawler uses a headless browser to render pages correctly. Run these commands to install the required components:
-Bash
+**Usage**
 
-```
-playwright install chromium
-playwright install-deps chromium
-```
+`python MTUOC-web-downloader.py <URL> [options]`
 
-## Usage
+Key Arguments: 
 
-### Basic Command
+* --web: Enables the download of HTML content.
+* --text: Extracts and saves a cleaned text/markdown version in a parallel directory.
+* --pdf / --docs / --media: Enables the download of specific binary categories (PDFs, Office documents, or media files).
+* --wayback: Enables discovery and fallback via the Wayback Machine if the live page is inaccessible.
+*  --robots: Enforces strict compliance with the site's robots.txt file.
+* --delay: Sets a base delay (in seconds) between requests to avoid server throttling.
 
-`python mirror_crawler.py https://example.com --web --pdf --wayback`
+Persistence Mechanism
 
-### Full Options List
+The script manages state through .tmp files (toDownload.tmp, alreadyDownloaded.tmp, and errors.tmp). This allows the process to be paused and resumed without losing progress or duplicating down#loads.
 
-``
-Option	Description
-url	The starting URL (e.g., https://domain.com).
--o, --output_dir	Local folder for the mirror (Default: mirror_site).
--l, --output_list	File to save the final list of processed URLs (Default: links.txt).
---web	Download HTML pages.
---pdf	Download PDF files.
---docs	Download Office docs (.docx, .xlsx, .pdf, etc.).
---media	Download images and videos.
---robots	Respect robots.txt rules for live downloads.
---delay	Base seconds to wait between requests (randomized ±50%).
---sitemap	Extract all URLs from the site's sitemap at the start.
---wayback	Discover historical URLs and use them as fallback.
---date	Target a specific snapshot date (YYYYMMDDhhmmss).
---visible	Run the browser in non-headless (visible) mode. 
-```
+## 2. MTUOC Web Archeologist
 
-### Resuming a Session
+The MTUOC Web Archeologist serves as a historical indexer. It queries the Internet Archive to map every capture ever recorded for a given domain.
+Usage
 
-If the script is interrupted (e.g., power loss or Ctrl+C), it maintains three persistent files:
+`python MTUOC-web-archeologist.py <domain> -o <mapping_file>`
 
-* `toDownload.tmp`: The current queue of pending URLs.
+* Data Streaming: Connects to the CDX API and processes results line-by-line to handle large-scale indices efficiently.
+* User Interruption: Supports Ctrl+C to stop the indexing process while automatically saving all data retrieved up to that point.
+* Format: Generates a Tab-Separated Values (TSV) file containing the original URL and the direct "id_" Wayback download link.
 
-* `alreadyDownloaded.tmp`: List of successfully processed URLs.
+## 3. MTUOC Web Restorer
 
-* `errors.tmp`: URLs that failed both live and archival attempts.
+The MTUOC Web Restorer is a hybrid reconstruction tool. It takes the index produced by the Archeologist and rebuilds the website locally using its original directory structure.
 
-To resume: Simply run the script again with the same initial URL. It will detect the .tmp files and continue from the last checkpoint.
+**Usage** 
 
-If you want to restart without resuming delerte these tmp files before restarting.
+`python MTUOC-web-restorer.py <mapping_file> -o <output_dir> [options]`
 
-###Disclaimer
+Hybrid Strategy
 
-This tool is for researach and educational purposes. Always ensure you have permission to crawl a website and respect the site's terms of service.
+For every entry in the mapping file, the Restorer:
 
-# Founding
+* Performs a fast check to see if the original URL is live.
+* * If live, it downloads the current version.
+* * If the live version is unavailable, it automatically fetches the archived snapshot from the Wayback Machine link.
 
-A set of scripts to download a whole website and store it locally developed in the framework of the project TAN-IBE: Neural Machine Translation for the romance languages of the Iberian Peninsula, founded by the Spanish Ministry of Science and Innovation Proyectos de generación de conocimiento 2021. Reference: PID2021-124663OB-I00 founded by MCIN /AEI /10.13039/501100011033 / FEDER, UE.
+Path Sanitization and Normalization
 
+* URL Decoding: Converts URL-encoded characters (e.g., %22, %20) into readable characters (quotes, spaces).
+* Filesystem Safety: Automatically replaces characters that are illegal in certain operating systems (" : * ? < > | \) with underscores.
+* Depth Management: Automatically creates the necessary subdirectories to match the original URL hierarchy.
