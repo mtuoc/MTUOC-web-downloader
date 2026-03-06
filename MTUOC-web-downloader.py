@@ -37,7 +37,7 @@ def load_list_from_file(filename):
 # --- DISCOVERY HELPERS ---
 
 def discover_sitemaps_with_usp(url):
-    print(f"--- 🗺️  Phase 0: Fetching Sitemap ---")
+    print(f"--- Phase 0: Fetching Sitemap ---")
     try:
         tree = sitemap_tree_for_homepage(url)
         urls = set(page.url for page in tree.all_pages())
@@ -48,7 +48,7 @@ def discover_sitemaps_with_usp(url):
     return set()
 
 def discover_wayback_links(domain):
-    print(f"--- 🏛️  Phase 1: Querying Wayback Machine index for {domain} ---")
+    print(f"--- Phase 1: Querying Wayback Machine index for {domain} ---")
     cdx_url = f"http://web.archive.org/cdx/search/cdx?url={domain}/*&output=json&fl=original&collapse=urlkey&limit=15000"
     try:
         r = requests.get(cdx_url, timeout=60)
@@ -145,7 +145,7 @@ async def main_crawler():
                 current_url = to_visit.pop(0).split('#')[0].rstrip('/')
                 if current_url in visited or current_url in errors: continue
 
-                print(f"[{len(visited)} ✅ | {len(to_visit)} ⏳] -> {current_url}")
+                print(f"[{len(visited)}  | {len(to_visit)} ] -> {current_url}")
                 
                 url_lower = current_url.lower()
                 is_pdf = url_lower.endswith('.pdf')
@@ -218,7 +218,7 @@ async def main_crawler():
 
                 await asyncio.sleep(args.delay * random.uniform(0.5, 1.5))
 
-        except KeyboardInterrupt: print("\n🛑 Paused.")
+        except KeyboardInterrupt: print("\n Paused.")
         finally:
             save_list_to_file(TMP_ALREADY_DOWNLOADED, visited)
             save_list_to_file(TMP_TO_DOWNLOAD, set(to_visit))
