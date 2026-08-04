@@ -68,3 +68,13 @@ Path Sanitization and Normalization
 * URL Decoding: Converts URL-encoded characters (e.g., %22, %20) into readable characters (quotes, spaces).
 * Filesystem Safety: Automatically replaces characters that are illegal in certain operating systems (" : * ? < > | \) with underscores.
 * Depth Management: Automatically creates the necessary subdirectories to match the original URL hierarchy.
+
+## Acknowledments
+
+These tools have been developed in the projecte "TamTAS: Terminology-Aware Machine Translation for Accessible Science", project PCI2025-167063-2, financiado por MICIU/AEI/10.13039/501100011033 y por la Unión Europea - Chist-era
+
+<img width="442" height="59" alt="image" src="https://github.com/user-attachments/assets/d31d4bf1-5a78-4093-9c8e-368c51b08709" />
+
+
+<img width="311" height="63" alt="image" src="https://github.com/user-attachments/assets/009c01a0-bb12-4dbd-af74-b6f9b65cf9bd" />
+
